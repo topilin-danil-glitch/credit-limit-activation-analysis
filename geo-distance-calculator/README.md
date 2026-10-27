@@ -49,7 +49,7 @@ d = 2R · asin( √( sin²(Δφ/2) + cosφ₁ · cosφ₂ · sin²(Δλ/2) ) )\
 
 ```
 bash
-git clone https://github.com/<your>/geo-distance-calculator.git
+git clone https://github.com/topilin-danil-glitch/geo-distance-calculator.git
 cd geo-distance-calculator
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
