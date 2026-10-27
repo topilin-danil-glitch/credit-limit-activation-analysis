@@ -47,6 +47,7 @@ d = 2R · asin( √( sin²(Δφ/2) + cosφ₁ · cosφ₂ · sin²(Δλ/2) ) )\
 
 Быстрый старт
 
+```
 bash
 git clone https://github.com/<your>/geo-distance-calculator.git
 cd geo-distance-calculator
@@ -54,7 +55,7 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 streamlit run app.py
-
+```
 
 Откройте http://localhost:8501.
 
