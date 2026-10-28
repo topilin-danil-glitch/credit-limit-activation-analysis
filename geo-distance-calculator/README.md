@@ -1,5 +1,7 @@
 Geo Distance Calculator
 
+Пример работы: https://topilin-danil-glitch-credit-l-geo-distance-calculatorapp-utdicj.streamlit.app/
+
 Веб-приложение(уже не факт)) для расчёта расстояния между двумя точками по их
 географическим координатам. Реализована **формула гаверсинуса**
 (great-circle distance) - устойчивый к малым расстояниям способ
