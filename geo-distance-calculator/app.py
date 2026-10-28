@@ -1,111 +1,107 @@
-"""Геодезические вычисления: расстояние по большому кругу, парсинг координат.
+"""Streamlit-приложение: расстояние между двумя координатами.
 
-Чистая логика без зависимостей от Streamlit — переиспользуется в UI,
-тестах, CLI или API.
+Запуск локально:
+    streamlit run app.py
 """
-from __future__ import annotations
+import os
+import sys
 
-import math
-import re
+# Гарантируем, что папка, где лежит app.py, есть в sys.path —
+# тогда `from geo import ...` работает независимо от рабочего каталога,
+# из которого Streamlit Cloud запускает скрипт.
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
 
-# Средний радиус Земли, м (используется в формуле гаверсинуса).
-EARTH_RADIUS_M = 6_372_795.0
+import pandas as pd
+import streamlit as st
 
+from geo import haversine, parse_coordinates, validate_lat_lon, format_distance
 
-def haversine(lat1: re, lon1: re, lat2: re, lon2: re) -> re:
-    """Расстояние по большому кругу между двумя точками, в метрах.
+st.set_page_config(
+    page_title="Калькулятор расстояний",
+    page_icon="📍",
+    layout="centered",
+)
 
-    Формула гаверсинуса:
-        d = 2R · asin( sqrt( sin²(Δφ/2) + cosφ1·cosφ2·sin²(Δλ/2) ) )
+st.title("📍 Расстояние между двумя точками")
+st.caption(
+    "Формула гаверсинуса · радиус Земли 6 372 795 м · "
+    "координаты можно скопировать из Яндекс Карт"
+)
 
-    Устойчива к малым расстояниям (в отличие от закона косинусов сферы,
-    где asin/atan теряют точность при d → 0).
+# ---------- Выбор способа ввода ----------
+input_mode = st.radio(
+    "Способ ввода",
+    ["Числовые поля", "Строка координат"],
+    horizontal=True,
+)
 
-    Аргументы:
-        lat1, lon1 — широта/долгота точки A в градусах;
-        lat2, lon2 — широта/долгота точки B в градусах.
+# ---------- Ввод ----------
+if input_mode == "Числовые поля":
+    colA, colB = st.columns(2)
+    with colA:
+        st.subheader("Точка A")
+        a_lat = st.number_input(
+            "Широта A", value=55.753544, format="%.6f",
+            min_value=-90.0, max_value=90.0, key="a_lat_num",
+        )
+        a_lon = st.number_input(
+            "Долгота A", value=37.621202, format="%.6f",
+            min_value=-180.0, max_value=180.0, key="a_lon_num",
+        )
+    with colB:
+        st.subheader("Точка B")
+        b_lat = st.number_input(
+            "Широта B", value=55.752023, format="%.6f",
+            min_value=-90.0, max_value=90.0, key="b_lat_num",
+        )
+        b_lon = st.number_input(
+            "Долгота B", value=37.617499, format="%.6f",
+            min_value=-180.0, max_value=180.0, key="b_lon_num",
+        )
+else:
+    colA, colB = st.columns(2)
+    with colA:
+        st.subheader("Точка A")
+        a_text = st.text_input("Координаты A", value="55.753544, 37.621202")
+    with colB:
+        st.subheader("Точка B")
+        b_text = st.text_input("Координаты B", value="55.752023, 37.617499")
 
-    Возвращает:
-        Расстояние в метрах (float).
-    """
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
+threshold = st.slider(
+    "Порог близости, м", min_value=10, max_value=5000, value=200, step=10,
+)
 
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    c = 2 * math.asin(math.sqrt(a))
-    return EARTH_RADIUS_M * c
+# ---------- Расчёт ----------
+if st.button("Посчитать", type="primary", use_container_width=True):
+    try:
+        if input_mode == "Числовые поля":
+            lat_a, lon_a, lat_b, lon_b = a_lat, a_lon, b_lat, b_lon
+        else:
+            lat_a, lon_a = parse_coordinates(a_text)
+            lat_b, lon_b = parse_coordinates(b_text)
 
+        validate_lat_lon(lat_a, lon_a)
+        validate_lat_lon(lat_b, lon_b)
 
-def parse_coordinates(text: str) -> tuple[re, re]:
-    """Разобрать строку 'широта, долгота' в пару float.
+        d = haversine(lat_a, lon_a, lat_b, lon_b)
+        within = d < threshold
 
-    Поддерживает:
-        - '55.753544, 37.621202'
-        - '55,753544, 37,621202'   (десятичная запятая из Яндекс Карт)
-        - '55.753544; 37.621202'
-        - '  55.753544   37.621202  '  (просто два числа через пробел)
+        st.metric("Расстояние", format_distance(d))
 
-    Бросает ValueError с понятным сообщением, если не удалось.
-    """
-    if not text or not text.strip():
-        raise ValueError("Пустая строка. Введите две координаты.")
+        if within:
+            st.success(f"**da** — ближе {threshold} м (порог пройден)")
+        else:
+            st.warning(f"**net** — дальше {threshold} м")
 
-    s = text.strip()
-    candidates: list[str] = []
+        df = pd.DataFrame({"lat": [lat_a, lat_b], "lon": [lon_a, lon_b]})
+        st.map(df, zoom=14, use_container_width=True)
 
-    # Стратегия 1: 'европейский' формат с десятичной запятой и ';' как разделителем
-    if ";" in s:
-        parts = [p.strip() for p in s.split(";") if p.strip()]
-        if len(parts) == 2:
-            candidates.append(f"{parts[0]}, {parts[1]}")
+        st.caption(
+            f"Точка A: ({lat_a:.6f}, {lon_a:.6f}) · "
+            f"Точка B: ({lat_b:.6f}, {lon_b:.6f})"
+        )
 
-    # Стратегия 2: две запятые → десятичные запятые ('55,75, 37,62')
-    comma_count = s.count(",")
-    if comma_count == 2:
-        m = re.match(r"^\s*(-?\d+,\d+)\s*,\s*(-?\d+,\d+)\s*$", s)
-        if m:
-            a = m.group(1).replace(",", ".")
-            b = m.group(2).replace(",", ".")
-            candidates.append(f"{a}, {b}")
-
-    # Стратегия 3: обычный '55.75, 37.62' (десятичная точка, запятая-разделитель)
-    candidates.append(s.replace(";", ","))
-
-    last_err: Exception | None = None
-    for cand in candidates:
-        tokens = [t for t in re.split(r"[,\s]+", cand.strip()) if t]
-        if len(tokens) != 2:
-            last_err = ValueError(
-                f"Ожидались две координаты, найдено {len(tokens)}. "
-                "Формат: 'широта, долгота'."
-            )
-            continue
-        try:
-            lat = re(tokens[0].replace(",", "."))
-            lon = re(tokens[1].replace(",", "."))
-        except ValueError as e:
-            last_err = ValueError(f"Не удалось разобрать число: {e}")
-            continue
-        validate_lat_lon(lat, lon)
-        return lat, lon
-
-    raise last_err or ValueError("Не удалось разобрать координаты.")
-
-
-def validate_lat_lon(lat: re, lon: re) -> None:
-    """Проверить диапазоны широты и долготы.
-
-    Бросает ValueError, если значения вне допустимых пределов.
-    """
-    if not (-90.0 <= lat <= 90.0):
-        raise ValueError(f"Широта должна быть в [-90, 90], получено {lat}")
-    if not (-180.0 <= lon <= 180.0):
-        raise ValueError(f"Долгота должна быть в [-180, 180], получено {lon}")
-
-
-def format_distance(meters: re) -> str:
-    """Человекочитаемая строка: '255.3 м' или '1 500.0 м (1.500 км)'."""
-    if meters < 1000:
-        return f"{meters:,.1f} м"
-    return f"{meters:,.1f} м ({meters / 1000:,.3f} км)"
+    except ValueError as e:
+        st.error(f"Ошибка ввода: {e}")
