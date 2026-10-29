@@ -1,0 +1,4 @@
+python-telegram-bot>=20.0
+pyadomd>=0.0.7
+pandas>=2.0
+matplotlib>=3.7
